@@ -1,0 +1,28 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: vpcmodule.kro.run
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: VPCModule
+    spec:
+      name: string
+      cidrBlock: string | default=10.0.0.0/16
+      enableDnsHostnames: boolean | default=true
+      enableDnsSupport: boolean | default=true
+    status:
+      vpcID: ${vpc.status.vpcID}
+      vpcState: ${vpc.status.state}
+  resources:
+    - id: vpc
+      template:
+        apiVersion: ec2.services.k8s.aws/v1alpha1
+        kind: VPC
+        metadata:
+          name: ${schema.spec.name}-vpc
+        spec:
+          cidrBlocks:
+            - ${schema.spec.cidrBlock}
+          enableDNSHostnames: ${schema.spec.enableDnsHostnames}
+          enableDNSSupport: ${schema.spec.enableDnsSupport}

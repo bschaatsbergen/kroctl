@@ -1,0 +1,121 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: networkstack.kro.run
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: NetworkStack
+    spec:
+      name: string
+      vpcCidr: string | default=10.0.0.0/16
+      subnets:
+        public:
+          cidr: string | default=10.0.1.0/24
+          availabilityZone: string | default=us-west-2a
+        private:
+          cidr: string | default=10.0.2.0/24
+          availabilityZone: string | default=us-west-2b
+    status:
+      vpcID: ${vpcModule.status.vpcID}
+      publicSubnetID: ${publicSubnetModule.status.subnetID}
+      privateSubnetID: ${privateSubnetModule.status.subnetID}
+      publicSecurityGroupID: ${publicSecurityGroup.status.id}
+      privateSecurityGroupID: ${privateSecurityGroup.status.id}
+  resources:
+    # Create a VPC using the VPCModule RGD
+    - id: vpcModule
+      template:
+        apiVersion: kro.run/v1alpha1
+        kind: VPCModule
+        metadata:
+          name: ${schema.spec.name}-vpc-module
+        spec:
+          name: ${schema.spec.name}
+          cidrBlock: ${schema.spec.vpcCidr}
+          enableDnsHostnames: true
+          enableDnsSupport: true
+
+    # Create public subnet using the SubnetModule RGD
+    - id: publicSubnetModule
+      template:
+        apiVersion: kro.run/v1alpha1
+        kind: SubnetModule
+        metadata:
+          name: ${schema.spec.name}-public-subnet-module
+        spec:
+          name: ${schema.spec.name}-public
+          vpcID: ${vpcModule.status.vpcID}
+          cidrBlock: ${schema.spec.subnets.public.cidr}
+          availabilityZone: ${schema.spec.subnets.public.availabilityZone}
+
+    # Create private subnet using the SubnetModule RGD
+    - id: privateSubnetModule
+      template:
+        apiVersion: kro.run/v1alpha1
+        kind: SubnetModule
+        metadata:
+          name: ${schema.spec.name}-private-subnet-module
+        spec:
+          name: ${schema.spec.name}-private
+          vpcID: ${vpcModule.status.vpcID}
+          cidrBlock: ${schema.spec.subnets.private.cidr}
+          availabilityZone: ${schema.spec.subnets.private.availabilityZone}
+
+    # Create public security group - allows HTTP/HTTPS from internet
+    - id: publicSecurityGroup
+      template:
+        apiVersion: ec2.services.k8s.aws/v1alpha1
+        kind: SecurityGroup
+        metadata:
+          name: ${schema.spec.name}-public-sg
+        spec:
+          name: ${schema.spec.name}-public-sg
+          description: "Security group for public subnet - allows HTTP/HTTPS traffic"
+          vpcID: ${vpcModule.status.vpcID}
+          ingressRules:
+            - fromPort: 80
+              toPort: 80
+              ipProtocol: tcp
+              ipRanges:
+                - cidrIP: 0.0.0.0/0
+                  description: "Allow HTTP from internet"
+            - fromPort: 443
+              toPort: 443
+              ipProtocol: tcp
+              ipRanges:
+                - cidrIP: 0.0.0.0/0
+                  description: "Allow HTTPS from internet"
+          egressRules:
+            - fromPort: -1
+              toPort: -1
+              ipProtocol: "-1"
+              ipRanges:
+                - cidrIP: 0.0.0.0/0
+                  description: "Allow all outbound traffic"
+
+    # Create private security group - allows traffic only from VPC CIDR
+    - id: privateSecurityGroup
+      template:
+        apiVersion: ec2.services.k8s.aws/v1alpha1
+        kind: SecurityGroup
+        metadata:
+          name: ${schema.spec.name}-private-sg
+        spec:
+          name: ${schema.spec.name}-private-sg
+          description: "Security group for private subnet - allows traffic from VPC only"
+          vpcID: ${vpcModule.status.vpcID}
+          ingressRules:
+            - fromPort: -1
+              toPort: -1
+              ipProtocol: "-1"
+              ipRanges:
+                - cidrIP: ${schema.spec.vpcCidr}
+                  description: "Allow all traffic from VPC"
+          egressRules:
+            - fromPort: -1
+              toPort: -1
+              ipProtocol: "-1"
+              ipRanges:
+                - cidrIP: 0.0.0.0/0
+                  description: "Allow all outbound traffic"

@@ -1,0 +1,27 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: subnetmodule.kro.run
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: SubnetModule
+    spec:
+      name: string
+      vpcID: string
+      cidrBlock: string
+      availabilityZone: string
+    status:
+      subnetID: ${subnet.status.subnetID}
+      subnetState: ${subnet.status.state}
+  resources:
+    - id: subnet
+      template:
+        apiVersion: ec2.services.k8s.aws/v1alpha1
+        kind: Subnet
+        metadata:
+          name: ${schema.spec.name}-subnet
+        spec:
+          vpcID: ${schema.spec.vpcID}
+          cidrBlock: ${schema.spec.cidrBlock}
+          availabilityZone: ${schema.spec.availabilityZone}
